@@ -9,5 +9,6 @@ myconfig.h
 # PlatformIO build artifacts
 .pio/
 build/
+firmware/*
 
 **/.DS_Store

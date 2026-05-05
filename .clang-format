@@ -1,0 +1,11 @@
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 120
+BraceWrapping:
+  AfterFunction: true
+  AfterControlStatement: false
+  BeforeElse: false
+BreakBeforeBraces: Attach
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortLambdasOnASingleLine: All
+SortIncludes: false
