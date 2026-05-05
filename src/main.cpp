@@ -23,7 +23,6 @@
 #include <DNSServer.h>
 #include <FS.h>
 using fs::File;
-#include <SPIFFS.h>
 #include <WebServer.h>
 #include <Preferences.h>
 #include "html_page.h"
@@ -49,9 +48,6 @@ const byte DNS_PORT = 53;
 DNSServer dnsServer;
 IPAddress apIP(192, 168, 4, 1);
 
-static unsigned long lastDotUpdate = 0;                 // for screen saver
-static unsigned long nextDotDelay = random(1000, 2001); // for screen saver
-unsigned long currentMillis = millis();
 unsigned long lastActivity = 0;                    // Last time user interacted (for screensaver)
 unsigned long screenSaverTimeout = 1000 * 60 * 60; // 60 minute
 
@@ -173,9 +169,6 @@ TFT_eSprite labelSprite = TFT_eSprite(&tft); // Global sprite
 // Scrolling Text
 int scrollingTextXposition;                                                                                                                        // Variable for text position (to start at the rightmost side)
 String scrollText = "Sorry, No Weather Info At This Moment!!!    Have you enterred your API key via the Web Interface at http://hamclock.local ?"; // Text to scroll
-// Timing variables
-unsigned long previousMillisForScroller = 0; // Store last time the action was performed
-
 // NTP Client Setup
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", 0, 60000); // UTC offset and update interval
@@ -197,7 +190,6 @@ void handleApiKeyPage();
 void handleSaveApiKey();
 void handleGetApiKey();
 void retrieveAPIkeyFromPref();
-void handleSave();
 void drawOrredrawStaticElements();
 void mountAndListSPIFFS(uint8_t levels = 255, bool listContent = true);
 void handlePNGUpload();
@@ -216,7 +208,6 @@ void drawWiFiSignalMeter(int qualityPercent);
 void handleRootCaptivePortal();
 void handleScanCaptivePortal();
 void handleSaveCaptivePortal();
-void startConfigurationPortal();
 void checkIfscreenIsTouchedDuringStartUpForFactoryReset();
 void tryToRetrieveUTCoffsetFromFirstConfiguration();
 // PNG Decoder Setup
@@ -244,7 +235,7 @@ void setup()
 
     tft.init();
     tft.setRotation(3);
-        tft.setRotation(1);// marco
+    //    tft.setRotation(1);// marco
 
     tft.fillScreen(TFT_BLACK);
     Serial.println("TFT Display initialized!");
@@ -299,7 +290,6 @@ void setup()
             server.serveStatic("/logo2.png", SPIFFS, "/logo2.png");
             server.serveStatic("/logo3.png", SPIFFS, "/logo3.png");
             server.serveStatic("/logo4.png", SPIFFS, "/logo4.png");
-            server.serveStatic("/logo4.png", SPIFFS, "/logo4.png");
             server.serveStatic("/github.png", SPIFFS, "/github.png");
             server.serveStatic("/favicon.ico", SPIFFS, "/favicon.ico");
             server.on("/config", HTTP_GET, []()
@@ -327,9 +317,6 @@ Serial.print("HERE"); Serial.println(APIkeyIsValid);
   String response;
   serializeJson(doc, response);
   server.send(200, "application/json", response); });
-
-            server.on("/scrolltext", []()
-                      { server.send(200, "text/plain", scrollText); });
 
             server.on("/setcolor", HTTP_POST, []()
                       {
@@ -552,32 +539,6 @@ Serial.print("HERE"); Serial.println(APIkeyIsValid);
 
                   server.send(200, "text/plain", "Boot logo saved");
                 esp_restart(); });
-
-            server.on("/setbootimage", HTTP_POST, []()
-                      {
-    if (!server.hasArg("plain")) {
-        server.send(400, "text/plain", "Missing body");
-        return;
-    }
-
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, server.arg("plain"));
-    if (error) {
-        server.send(400, "text/plain", "JSON parse error");
-        return;
-    }
-
-   if (!doc["bootImageId"].is<const char*>()) {
-    server.send(400, "text/plain", "Missing bootImageId");
-    return;
-}
-
-    startupLogo = doc["bootImageId"].as<String>();
-    Serial.printf("🖼️ Boot logo updated to: %s\n", startupLogo.c_str());
-
-    saveSettings(); // 💾 Persist the change
-
-    server.send(200, "text/plain", "Boot logo saved"); });
 
             server.on("/ping", HTTP_GET, []()
                       { server.send(200, "text/plain", "pong"); });
@@ -1271,6 +1232,7 @@ void saveSettings()
     doc["startupLogo"] = startupLogo;
     doc["italicClockFonts"] = italicClockFonts;
     doc["autoPageChange"] = autoPageChange;
+    doc["screenSaverTimeout"] = screenSaverTimeout;
 
     fs::File file = SPIFFS.open("/settings.json", "w");
 
@@ -1335,84 +1297,8 @@ void handleApiKeyPage()
     file.close();
 }
 
-void handleSave()
-{
-    if (server.hasArg("latitude"))
-        latitude = server.arg("latitude").toFloat();
-    if (server.hasArg("longitude"))
-        longitude = server.arg("longitude").toFloat();
-    if (server.hasArg("bannerSpeed"))
-        bannerSpeed = server.arg("bannerSpeed").toInt();
-    if (server.hasArg("localLabel"))
-        localTimeLabel = server.arg("localLabel");
-    if (server.hasArg("utcLabel"))
-        utcTimeLabel = server.arg("utcLabel");
-    if (server.hasArg("logo"))
-        startupLogo = server.arg("logo");
-    if (server.hasArg("italicFont"))
-        italicClockFonts = (server.arg("italicFont") == "on");
-
-    saveSettings(); // Save updated settings
-
-    server.send(200, "text/html", "<h1>✅ Settings saved!</h1><a href='/'>Back</a>");
-}
-
-void drawOrredrawStaticElementsOLD()
-{
-    // Only run if we want to refresh the frames
-    if (refreshFrames)
-    {
-        refreshFramesCounter++;
-        if (refreshFramesCounter < 2)
-        {
-            return; // Wait for second execution
-        }
-        refreshFrames = false;
-        refreshFramesCounter = 0;
-    }
-    previousLocalTime = "";
-    previousUTCtime = "";
-    tft.setFreeFont(&Orbitron_Medium8pt7b);
-    tft.fillRect(25, 0 + 85 - 10, 270, 20, TFT_BLACK);
-    tft.fillRect(25, 106 + 85 - 10, 270, 20, TFT_BLACK);
-
-    // 🟩 Local Frame
-    tft.fillRect(0, 0, 320, 87, TFT_BLACK); // Clear previous frame
-    tft.drawRoundRect(1, 1, 318, 85, 4, TFT_BLACK);
-
-    tft.drawRoundRect(0, 0, 320, 87, 5, localFrameColour);
-    if (doubleFrame)
-    {
-        tft.drawRoundRect(1, 1, 318, 85, 4, localFrameColour);
-        tft.drawRoundRect(2, 2, 316, 83, 4, localFrameColour);
-        tft.drawRoundRect(3, 3, 314, 81, 4, localFrameColour);
-    }
-
-    // 🟦 Local Time Label
-
-    tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    tft.drawCentreString(localTimeLabel, 160, 76, 1);
-
-    // 🟥 UTC Frame
-    tft.fillRect(0, 105, 320, 87, TFT_BLACK); // Clear previous frame
-    tft.drawRoundRect(1, 106, 318, 85, 4, TFT_BLACK);
-
-    tft.drawRoundRect(0, 105, 320, 87, 5, utcFrameColour);
-    if (doubleFrame)
-    {
-        tft.drawRoundRect(1, 106, 318, 85, 4, utcFrameColour);
-        tft.drawRoundRect(2, 107, 316, 83, 4, utcFrameColour);
-        tft.drawRoundRect(3, 108, 314, 81, 4, utcFrameColour);
-    }
-
-    // ⬜ UTC Label
-    tft.drawCentreString(utcTimeLabel, 160, 76 + 105, 1);
-}
-
 void drawOrredrawStaticElements()
 {
-    // Only run if we want to refresh the frames
-    tft.fillScreen(TFT_BLACK);
     if (refreshFrames)
     {
         refreshFramesCounter++;
@@ -1423,6 +1309,7 @@ void drawOrredrawStaticElements()
         refreshFrames = false;
         refreshFramesCounter = 0;
     }
+    tft.fillScreen(TFT_BLACK);
     previousLocalTime = "";
     previousUTCtime = "";
     tft.setFreeFont(&Orbitron_Medium8pt7b);
@@ -2473,7 +2360,6 @@ bool tryToConnectSavedWiFi()
     }
 
     Serial.println("\n❌ Failed to connect to saved WiFi.");
-    startConfigurationPortal();
     return false;
 }
 
@@ -2616,7 +2502,7 @@ void handleSaveApiKey()
 {
     if (server.hasArg("key"))
     {
-        String apiKey = server.arg("key");
+        apiKey = server.arg("key");
         prefs.begin("config", false);
         prefs.putString("ow_api_key", apiKey);
         prefs.end();
