@@ -743,11 +743,9 @@ void loop() {
                 if (reDrawWiFiQualityPage == true) {
                     Serial.println("Displaying Wifi Quality Page");
                     reDrawWiFiQualityPage = false;
-
                     drawWiFiQualityPage();
                 }
-                if (currentMillis - previousMillisForWiFiPageUpdate >= 1000)  // to not overflow
-                {
+                if (currentMillis - previousMillisForWiFiPageUpdate >= 1000) {
                     updateWiFiSignalDisplay();
                     previousMillisForWiFiPageUpdate = currentMillis;
                 }
@@ -1852,47 +1850,32 @@ void updateWiFiSignalDisplay() {
 
     // Static variables to track previous values
     static String lastRSSI = "";
-    static String lastSignal = "";
 
     // Convert new values to strings
     String newRSSI = String(rssi) + " dBm";
-    String newSignal = String(quality) + "%";
 
     // Coordinates based on drawWiFiQualityPage
-    int rssiX = 130;
-    int rssiY = 15 + 3 * 18;
-    int signalX = 130;
-    int signalY = 15 + 4 * 18;
-
-    tft.setTextColor(TFT_BLACK, TFT_BLACK);  // erase with background color
+    int rssiX = 75;
+    int rssiY = 15 + 1 * 20;
 
     // Erase previous RSSI
     tft.setCursor(rssiX, rssiY);
+    tft.setTextColor(TFT_BLACK, TFT_BLACK);
     tft.print(": ");
     tft.print(lastRSSI);
 
-    // Erase previous Signal %
-    tft.setCursor(signalX, signalY);
-    tft.print(": ");
-    tft.print(lastSignal);
-
     // Draw updated values
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-
     tft.setCursor(rssiX, rssiY);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.print(": ");
+    tft.setTextColor(TFT_SILVER, TFT_BLACK);
     tft.print(newRSSI);
-
-    tft.setCursor(signalX, signalY);
-    tft.print(": ");
-    tft.print(newSignal);
 
     // Update bar graph
     drawWiFiSignalMeter(quality);
 
     // Save current values for next comparison
     lastRSSI = newRSSI;
-    lastSignal = newSignal;
 }
 
 void drawWiFiSignalMeter(int qualityPercent) {
@@ -1928,20 +1911,19 @@ void drawWiFiSignalMeter(int qualityPercent) {
 
 void drawWiFiQualityPage() {
     tft.fillScreen(TFT_BLACK);
-    // tft.setFreeFont(&UbuntuMono_Regular8pt7b);
-    tft.setFreeFont(&FreeSans9pt7b);
-
+    tft.setFreeFont(&Orbitron_Medium10pt7b);
     tft.setTextSize(1);
 
     int y = 15;
-    const int lineSpacing = 18;
+    const int lineSpacing = 20;
 
     auto printLine = [&](const String &label, const String &value, uint16_t color = TFT_WHITE) {
-        tft.setTextColor(color, TFT_BLACK);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
         tft.setCursor(10, y);
         tft.print(label);
-        tft.setCursor(130, y);
+        tft.setCursor(75, y);
         tft.print(": ");
+        tft.setTextColor(TFT_SILVER, TFT_BLACK);
         tft.print(value);
         y += lineSpacing;
     };
@@ -1952,20 +1934,17 @@ void drawWiFiQualityPage() {
     int rssi = WiFi.RSSI();
     int quality = constrain(2 * (rssi + 100), 0, 100);
     String gateway = WiFi.gatewayIP().toString();
-    String subnet = WiFi.subnetMask().toString();
     String dns = WiFi.dnsIP().toString();
     String hostname = WiFi.getHostname();
 
-    printLine(" SSID", ssid);
-    printLine(" IP", ip);
-    printLine(" MAC", mac);
-    printLine(" RSSI", String(rssi) + " dBm");
-    printLine(" Signal", String(quality) + "%");
-    printLine(" Gateway", gateway);
-    printLine(" Subnet", subnet);
-    printLine(" DNS", dns);
-    printLine(" Hostname 1", hostname + ".local");
-    printLine(" Hostname 2", "hamclock.local");
+    printLine("SSID", ssid);
+    printLine("RSSI", "");
+    printLine("IP", ip);
+    printLine("GW", gateway);
+    printLine("DNS", dns);
+    printLine("MAC", mac);
+    printLine("Host", hostname + ".local");
+    printLine("", "hamclock.local");
 
     drawWiFiSignalMeter(quality);
 }
@@ -2109,6 +2088,8 @@ bool tryToConnectSavedWiFi() {
 
     Serial.printf("📡 Found SSID: %s\n", ssid.c_str());
     Serial.printf("🔐 Found Password: %s\n", pass.c_str());
+
+    WiFi.setHostname("hamclock");
 
     Serial.printf("🔌 Connecting to WiFi: %s...\n", ssid.c_str());
     WiFi.begin(ssid.c_str(), pass.c_str());
